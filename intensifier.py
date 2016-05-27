@@ -5,7 +5,6 @@ from os.path import basename,splitext
 from wand.image import Image
 from wand.drawing import Drawing
 from wand.color import Color
-from wand.font import Font
 import tempfile
 import requests
 import argparse

@@ -1,6 +1,9 @@
 # intensifier
+Requirements:
+* ImageMagick (http://www.imagemagick.org/script/index.php)
+* wand (http://docs.wand-py.org/en/0.4.2/)
+* requests (http://docs.python-requests.org/en/master/)
 
-Requires to have ImageMagick (http://www.imagemagick.org/script/index.php) and Wand (http://docs.wand-py.org/en/0.4.2/) installed.
 ```
 usage: intensifier.py [-h] [-s {1..99}] [-f {2..20}] [-t TEXT] filename
 

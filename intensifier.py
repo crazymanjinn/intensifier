@@ -1,127 +1,153 @@
 #!/usr/bin/env python3
+"""
+usage: intensifier.py [-h] [-s {1..99}] [-f {2..20}] [-t TEXT] filename
+
+Intensify an image
+
+positional arguments:
+  filename              file to be intensified
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -s {1..99}, --shake {1..99}
+                        maximum amount of shakiness specified as a percentage
+                        of the file's shortest axis (default: 10)
+  -f {2..20}, --frames {2..20}
+                        number of frames in animation (default: 6)
+  -t TEXT, --text TEXT  optional text at the bottom
+"""
+
+import argparse
 import random
 import os
-from os.path import basename,splitext
+from os.path import basename, splitext
 from wand.image import Image
 from wand.drawing import Drawing
 from wand.color import Color
 import tempfile
 import requests
-import argparse
+
+
+# ===== DEFAULT OPTIONS =====
+REDUCE_PERCENT = 10
+FRAMES = 6
+
+
+def Main(filename, reduce_percent, frames, text):
+    """ main function """
+    dimensions = GetDimensions(filename)
+    cut_pixels = int(min(dimensions) * reduce_percent / 100 / 2)
+    Animate(filename, dimensions, cut_pixels, frames, text)
 
 
 def GetDimensions(filename):
-  with Image(filename=filename) as img:
-    dimensions = (img.width, img.height)
-  return(dimensions)
+    """ gets the dimensions of `filename` """
+    with Image(filename=filename) as img:
+        dimensions = (img.width, img.height)
+    return(dimensions)
 
 
-def GenerateOffsets(frames, cutPixels):
-  maxRand = int(cutPixels / 2)
-  if frames == 2:
-    return([(0,0),(maxRand, maxRand), (0,0)])
+def Animate(filename, dimensions, cut_pixels, frames, text):
+    """ creates frames, offsets them, and optionally adds captions """
+    new_dimensions = tuple(i-(cut_pixels*2) for i in dimensions)
+    coords = GenerateOffsets(frames, cut_pixels)
 
-  finished = False
+    with Image() as new_image:
+        for coord in (coords[:-1]):
+            with Image(filename=filename) as img:
+                img.crop(cut_pixels + coord[0], cut_pixels + coord[1],
+                         width=new_dimensions[0], height=new_dimensions[1])
+                img.format = 'gif'
+                with img.sequence[0] as frame:
+                    frame.delay = 2
 
-  while not finished:
-    coords = [(0,0)]
-    for i in range(frames):
-      goodRandom = False
+                if text is not None:
+                    AddText(img, new_dimensions, text)
 
-      while not goodRandom:
-        new_coord = []
-        for point in coords[i]:
-          change=random.randint(-maxRand,maxRand)
+                new_image.sequence.append(img.sequence[0])
+        shortname = splitext(basename(filename))[0]
+        new_image.save(filename='{:s}-intense.gif'.format(shortname))
 
-          while(abs(point + change) > cutPixels):
-            change=random.randint(-maxRand,maxRand)
 
-          new_coord.append(point + change)
+def GenerateOffsets(frames, cut_pixels):
+    """ generate random offsets for frames """
+    def GenRandom(max_rand):
+        return random.randint(-max_rand, max_rand)
 
-        coord_tuple = tuple(new_coord)
-        if coord_tuple not in coords[-2:]:
-          coords.append(coord_tuple)
-          goodRandom = True
+    max_rand = int(cut_pixels / 2)
+    if frames == 2:
+        return([(0, 0), (max_rand, max_rand), (0, 0)])
 
-    if ((len(coords) == frames+1) and (coords[-1] == (0,0))):
-      finished=True
+    finished = False
+    while not finished:
+        coords = [(0, 0)]
+        for i in range(frames):
+            good_random = False
+            while not good_random:
+                new_coord = []
+                for point in coords[i]:
+                    change = GenRandom(max_rand)
+                    while(abs(point + change) > cut_pixels):
+                        change = GenRandom(max_rand)
+                    new_coord.append(point + change)
+                coord_tuple = tuple(new_coord)
+                if coord_tuple not in coords[-2:]:
+                    coords.append(coord_tuple)
+                    good_random = True
+        if ((len(coords) == frames + 1) and (coords[-1] == (0, 0))):
+            finished = True
+    return(coords)
 
-  return(coords)
+
+def AddText(img, new_dimensions, text):
+    """ adds text to frame """
+    font_file = DownloadFont()
+    with Drawing() as draw:
+        font_size = new_dimensions[1] * .045
+        xpos = round(new_dimensions[0] / 2)
+        ypos = round(new_dimensions[1] - 1.5 * font_size)
+        outline = font_size / 10
+        draw.font = font_file
+        draw.font_size = font_size
+        draw.text_alignment = 'center'
+        draw.text_antialias = True
+        invis = draw.stroke_color
+        draw.stroke_color = Color('#000000')
+        draw.fill_color = Color('#ffff00')
+        draw.stroke_width = outline
+        draw.text(xpos, ypos, text)
+        draw.stroke_color = invis
+        draw.text(xpos, ypos, text)
+        draw(img)
+    os.remove(font_file)
 
 
 def DownloadFont():
-  fontfile = tempfile.NamedTemporaryFile(delete=False, suffix='.ttf')
-
-  url=("https://github.com/google/fonts/blob/"
-       "4a99a0649614f7e582ec184fea5cdeec51702d79/ofl/sourcecodepro/"
-       "SourceCodePro-Regular.ttf?raw=true")
-  r = requests.get(url)
-  if r.status_code == 200:
-    with open(fontfile.name, "wb") as font:
-      font.write(r.content)
-
-  return(fontfile.name)
-
-
-def GenerateFrames(filename, cutPixels, frames, dimensions, subtitle):
-  newDimensions = tuple(i-(cutPixels*2) for i in dimensions)
-
-  coords = GenerateOffsets(frames, cutPixels)
-
-  with Image() as new_image:
-    for coord in (coords[:-1]):
-      with Image(filename=filename) as img:
-        img.crop(cutPixels+coord[0], cutPixels+coord[1], width=newDimensions[0], height=newDimensions[1])
-        img.format = 'gif'
-        with img.sequence[0] as frame:
-          frame.delay=2
-
-        if subtitle is not None:
-          fontFile = DownloadFont()
-
-          with Drawing() as draw:
-            fontSize=newDimensions[1]*.045
-            xpos=round(newDimensions[0]/2)
-            ypos=round(newDimensions[1]-1.5*fontSize)
-            outline=fontSize/10
-            draw.font = fontFile
-            draw.font_size = fontSize
-            draw.text_alignment = 'center'
-            draw.text_antialias = True
-            invis = draw.stroke_color
-            with Color('#000000') as black:
-              draw.stroke_color = black
-            with Color('#ffff00') as yellow:
-              draw.fill_color = yellow
-            draw.stroke_width = outline
-            draw.text(xpos,ypos,subtitle)
-            draw.stroke_color=invis
-            draw.text(xpos,ypos,subtitle)
-            draw(img)
-          os.remove(fontFile)
-
-        new_image.sequence.append(img.sequence[0])
-
-    shortname = splitext(basename(filename))[0]
-    new_image.save(filename='{:s}-intense.gif'.format(shortname))
-
-
-def Shake(filename, reducePercent=2, frames=6, delay=2, subtitle=None):
-  dimensions = GetDimensions(filename)
-  cutPixels = int(min(dimensions) * reducePercent / 100 / 2)
-  # print("Cutting {0:d} pixels off all sides ({1:.2%})".format(cutPixels,2*cutPixels/min(dimensions)))
-  # newDimensions = tuple(i-10 for i in dimensions)
-  # print('Reducing image size by {1:02d}% (final dimensions: {0})'.format(newDimensions,reducePercent))
-
-  GenerateFrames(filename, cutPixels, frames, dimensions, subtitle)
+    """ downlaods font file """
+    font_file = tempfile.NamedTemporaryFile(delete=False, suffix='.ttf')
+    url = ("https://github.com/google/fonts/blob/"
+           "4a99a0649614f7e582ec184fea5cdeec51702d79/ofl/sourcecodepro/"
+           "SourceCodePro-Regular.ttf?raw=true")
+    r = requests.get(url)
+    if r.status_code == 200:
+        with open(font_file.name, "wb") as font:
+            font.write(r.content)
+    return(font_file.name)
 
 
 if __name__ == "__main__":
-  parser = argparse.ArgumentParser(description="Intensify an image")
-  parser.add_argument('filename', help="file to be intensified")
-  parser.add_argument('-s', '--shake', type=int, default=10, choices=range(1,100), metavar="{1..99}", help="maximum amount of shakiness specified as a percentage of the file's shortest axis (default: %(default)s)")
-  parser.add_argument('-f', '--frames', type=int, default=6, choices=range(2,21), metavar="{2..20}", help="number of frames in animation (default: %(default)s)")
-  parser.add_argument('-t', '--text', help="optional text at the bottom")
-  args=parser.parse_args()
+    parser = argparse.ArgumentParser(description="Intensify an image")
+    parser.add_argument('filename', help="file to be intensified")
+    parser.add_argument('-s', '--shake', type=int, default=REDUCE_PERCENT,
+                        choices=range(1, 100), metavar="{1..99}",
+                        help=("maximum amount of shakiness specified as a "
+                              "percentage of the file's shortest axis "
+                              "(default: %(default)s)"), dest="reduce_percent")
+    parser.add_argument('-f', '--frames', type=int, default=FRAMES,
+                        choices=range(2, 21), metavar="{2..20}",
+                        help=("number of frames in animation "
+                              "(default: %(default)s)"))
+    parser.add_argument('-t', '--text', help="optional text at the bottom")
 
-  Shake(filename=args.filename, reducePercent=args.shake, frames=args.frames, subtitle=args.text)
+    args = parser.parse_args()
+    Main(**vars(args))

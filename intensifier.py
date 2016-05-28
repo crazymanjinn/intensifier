@@ -35,14 +35,8 @@ FRAMES = 6
 
 def Main(filename, reduce_percent, frames, text):
     """ main function """
-    print(locals())
-
     dimensions = GetDimensions(filename)
     cut_pixels = int(min(dimensions) * reduce_percent / 100 / 2)
-
-    print("dimensions: {}".format(dimensions))
-    print("cut_pixels: {}".format(cut_pixels))
-
     Animate(filename, dimensions, cut_pixels, frames, text)
 
 
@@ -57,8 +51,6 @@ def Animate(filename, dimensions, cut_pixels, frames, text):
     """ creates frames, offsets them, and optionally adds captions """
     new_dimensions = tuple(i-(cut_pixels*2) for i in dimensions)
     coords = GenerateOffsets(frames, cut_pixels)
-    print('new_dimensions: {}'.format(new_dimensions))
-    print('coords: {}'.format(coords))
 
     with Image() as new_image:
         for coord in (coords[:-1]):
@@ -108,6 +100,7 @@ def GenerateOffsets(frames, cut_pixels):
 
 
 def AddText(img, new_dimensions, text):
+    """ adds text to frame """
     font_file = DownloadFont()
     with Drawing() as draw:
         font_size = new_dimensions[1] * .045
@@ -130,6 +123,7 @@ def AddText(img, new_dimensions, text):
 
 
 def DownloadFont():
+    """ downlaods font file """
     font_file = tempfile.NamedTemporaryFile(delete=False, suffix='.ttf')
     url = ("https://github.com/google/fonts/blob/"
            "4a99a0649614f7e582ec184fea5cdeec51702d79/ofl/sourcecodepro/"

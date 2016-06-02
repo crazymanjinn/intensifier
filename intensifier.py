@@ -26,6 +26,7 @@ from wand.drawing import Drawing
 from wand.color import Color
 import tempfile
 import requests
+import subprocess
 
 
 # ===== DEFAULT OPTIONS =====
@@ -65,8 +66,10 @@ def Animate(filename, dimensions, cut_pixels, frames, text):
                     AddText(img, new_dimensions, text)
 
                 new_image.sequence.append(img.sequence[0])
-        shortname = splitext(basename(filename))[0]
-        new_image.save(filename='{:s}-intense.gif'.format(shortname))
+        new_name = '{:s}-intense.gif'.format(splitext(basename(filename))[0])
+        new_image.save(filename=new_name)
+
+    FixDisposal(new_name)
 
 
 def GenerateOffsets(frames, cut_pixels):
@@ -133,6 +136,11 @@ def DownloadFont():
         with open(font_file.name, "wb") as font:
             font.write(r.content)
     return(font_file.name)
+
+
+def FixDisposal(new_name):
+    convert_return = subprocess.call(["convert", "-dispose", "previous", new_name, new_name])
+    return convert_return
 
 
 if __name__ == "__main__":
